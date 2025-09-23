@@ -66,6 +66,13 @@ To use this module, add it to the modules array in the `config/config.js` file:
     }
 },
 ```
+### Wayland
+Using Wayland, the xrandr commands to pull monitor status and control on/off do not work. Replace the following in the 'config/config.js' file to use with wayland.
+```js
+        monitorStatusCommand: 'wlr-randr | awk \'/HDMI-A-2/ {found=1} found && /Enabled:/ {print ($2 == "yes") ? "true" : "false"; exit} END {if(!found) print "false"}\'',
+        monitorOnCommand: 'wlr-randr --output HDMI-A-2 --on',
+        monitorOffCommand: 'wlr-randr --output HDMI-A-2 --off',
+```
 *Example config for a Raspberry Pi 4B running MagicMirror server and client with PM2*
 
 ## Configuration options
