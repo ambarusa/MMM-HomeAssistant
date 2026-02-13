@@ -19,6 +19,7 @@ The module uses MQTT autodiscovery to automatically create entities in Home Assi
 - Adjust MagicMirror brightness
 - Control visibility of individual MagicMirror modules as switches
 - Restart MagicMirror process via Home Assistant
+- Execute custom bash commands/scripts via Home Assistant
 
 ## Installation
 
@@ -62,7 +63,14 @@ To use this module, add it to the modules array in the `config/config.js` file:
         monitorOnCommand: 'xrandr -d :0 --output HDMI-1 --auto --rotate right',
         monitorOffCommand: 'xrandr -d :0 --output HDMI-1 --off',
         pm2ProcessName: 'mm',
-        refreshBrowser: true
+        refreshBrowser: true,
+        customCommands: [
+            {
+                name: 'update_mm',
+                displayName: 'Update MagicMirror',
+                command: 'bash /path/to/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh' // Adjust this path to your MagicMirror installation
+            }
+        ]
     }
 },
 ```
@@ -93,10 +101,58 @@ Using Wayland, the xrandr commands to pull monitor status and control on/off do 
 | `moduleControl`       | boolean  | `true`              | Make modules controllable as switch entities.                                                                       |
 | `pm2ProcessName`      | string   | *(none)*            | If set, allows MagicMirror to be restarted via Home Assistant.                                                      |
 | `refreshBrowser`      | boolean  | `true`              | If enabled, will programmatically open and close a browser to refresh MagicMirror clients on other instances.       |
+| `customCommands`      | array    | *(none)*            | Array of custom commands to execute. See [Custom Commands](#custom-commands) section below.                         |
 
 ## Home Assistant Integration
 
 Entities will appear automatically in Home Assistant if MQTT autodiscovery is enabled. You can control your MagicMirror from the Home Assistant dashboard or automations.
+
+## Custom Commands
+
+You can define custom bash commands or scripts that Home Assistant can trigger. Each command will appear as a button entity in Home Assistant.
+
+### Update script (update_MM.sh)
+
+The sample script at `custom_commands/update_MM.sh` performs a full MagicMirror update cycle with logging and safety checks. In short, it:
+
+- Rotates its log every 5 runs and writes to `custom_commands/update_MM.log`.
+- Uses a lock file to prevent concurrent runs.
+- Updates the MagicMirror base repo with `git pull`, then runs `npm run install-mm` if changes were pulled.
+- Updates every `MMM-*` module under `modules/` with `git pull` and `npm install` when needed.
+- Restarts MagicMirror with `pm2 restart` if updates were applied (configurable via `PM2_PROCESS_NAME`, default `mm`).
+
+Notes:
+
+- The script does a `git reset --hard HEAD` in the base repo and in each module to avoid conflicts. If you keep local changes, they will be discarded.
+- You can pass a MagicMirror path as the first argument; otherwise it defaults to `~/MagicMirror`.
+- If `pm2` is not installed, the script will skip restart and log a reminder.
+
+### Configuration
+
+Add a `customCommands` array to your config:
+
+```js
+customCommands: [
+  {
+    name: 'update_mm',
+    displayName: 'Update MagicMirror',
+    command: 'bash /home/pi/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh'
+  },
+  {
+    name: 'hello',
+    displayName: 'Say Hello',
+    command: 'echo "Hello from MagicMirror!"'
+  }
+]
+```
+
+### Custom Command Properties
+
+| Property      | Type   | Required | Description                                                          |
+|---------------|--------|----------|----------------------------------------------------------------------|
+| `name`        | string | Yes      | Unique identifier for the command (used in MQTT topic).              |
+| `displayName` | string | No       | Display name in Home Assistant. Defaults to formatted `name`.        |
+| `command`     | string | Yes      | Bash command or script path to execute.                              |
 
 ## Troubleshooting
 

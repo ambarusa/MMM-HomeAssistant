@@ -1,5 +1,6 @@
 'use strict';
 const NodeHelper = require('node_helper');
+const Log = require('logger');
 const mqtt = require('mqtt');
 const puppeteer = require('puppeteer');
 const si = require('systeminformation');
@@ -8,7 +9,7 @@ const { exec } = require('child_process');
 
 module.exports = NodeHelper.create({
   start: function () {
-    console.log('[MMM-HomeAssistant] Module started!');
+    Log.info('[MMM-HomeAssistant] Module started');
     this.clients = {};
 
     this.config = null;
@@ -23,22 +24,30 @@ module.exports = NodeHelper.create({
 
     const nsp = this.io.of('/MMM-HomeAssistant');
     nsp.on('connection', (socket) => {
-      console.log('[MMM-HomeAssistant] Socket connected:', socket.id);
+      Log.debug('[MMM-HomeAssistant] Socket connected:', socket.id);
       this.clients[socket.id] = true;
 
       socket.on('disconnect', () => {
-        console.log('[MMM-HomeAssistant] Socket disconnected:', socket.id);
+        Log.debug('[MMM-HomeAssistant] Socket disconnected:', socket.id);
         delete this.clients[socket.id];
         if (Object.keys(this.clients).length === 0) {
           // No clients connected, disconnect from MQTT
           if (this.client) {
-            console.log('[MMM-HomeAssistant] No clients connected, disconnecting from MQTT.');
+            Log.debug('[MMM-HomeAssistant] No clients connected, disconnecting from MQTT');
             this.client.end();
             this.client = null;
           }
         }
       });
     });
+  },
+
+  normalizeMqttServer: function (serverUrl) {
+    if (!serverUrl) return serverUrl;
+    if (!/^mqtt(s)?:\/\//.test(serverUrl)) {
+      return `mqtt://${serverUrl}`;
+    }
+    return serverUrl;
   },
 
   connectMQTT: function () {
@@ -48,10 +57,7 @@ module.exports = NodeHelper.create({
       throw new Error('[MMM-HomeAssistant] MQTT server URL is missing in the configuration.');
     }
 
-    // Ensure the server URL includes the protocol
-    if (!/^mqtt(s)?:\/\//.test(this.config.mqttServer)) {
-      this.config.mqttServer = `mqtt://${this.config.mqttServer}`;
-    }
+    const mqttServer = this.normalizeMqttServer(this.config.mqttServer);
 
     const mqttOptions = {
       clientId: this.config.deviceName || `MagicMirror_${Math.random().toString(16).substr(2, 8)}`,
@@ -70,11 +76,11 @@ module.exports = NodeHelper.create({
     if (!mqttOptions.username) delete mqttOptions.username;
     if (!mqttOptions.password) delete mqttOptions.password;
 
-    console.log('[MMM-HomeAssistant] Connecting to MQTT server:', `${this.config.mqttServer}:${mqttOptions.port}`);
-    this.client = mqtt.connect(this.config.mqttServer, mqttOptions);
+    Log.debug('[MMM-HomeAssistant] Connecting to MQTT server:', `${mqttServer}:${mqttOptions.port}`);
+    this.client = mqtt.connect(mqttServer, mqttOptions);
 
     this.client.on('connect', () => {
-      console.log('[MMM-HomeAssistant] Successfully connected to MQTT server.');
+      Log.info('[MMM-HomeAssistant] Connected to MQTT');
 
       this.mqttErrorLogged = false; // Reset error flag on successful connect
       this.mqttCloseLogged = false; // Reset close flag on successful connect
@@ -90,14 +96,14 @@ module.exports = NodeHelper.create({
 
     this.client.on('error', (err) => {
       if (!this.mqttErrorLogged) {
-        console.error('[MMM-HomeAssistant] MQTT connection error:', err);
+        Log.error('[MMM-HomeAssistant] MQTT connection error:', err);
         this.mqttErrorLogged = true; // Set error flag to prevent repeated logging
       }
     });
 
     this.client.on('close', () => {
       if (!this.mqttCloseLogged) {
-        console.log('[MMM-HomeAssistant] MQTT connection closed.');
+        Log.debug('[MMM-HomeAssistant] MQTT connection closed');
         this.mqttCloseLogged = true; // Set close flag to prevent repeated logging
         // Publish last will message to availability topic
         this.client.publish(this.availabilityTopic, 'offline', { retain: true });
@@ -113,11 +119,18 @@ module.exports = NodeHelper.create({
     if (this.config.refreshBrowser) {
       topics.push(`${this.setTopic}/refresh`);
     }
+    if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
+      this.config.customCommands.forEach((cmd) => {
+        if (cmd.name) {
+          topics.push(`${this.setTopic}/${cmd.name}`);
+        }
+      });
+    }
     this.client.subscribe(topics, (err, granted) => {
       if (err) {
-        console.error('[MMM-HomeAssistant] Failed to subscribe to set topics:', err);
+        Log.error('[MMM-HomeAssistant] Failed to subscribe to set topics:', err);
       } else {
-        console.log('[MMM-HomeAssistant] Subscribed to set topics:', granted.map(g => g.topic).join(', '));
+        Log.debug('[MMM-HomeAssistant] Subscribed to topics:', granted.map(g => g.topic).join(', '));
       }
     });
 
@@ -125,7 +138,7 @@ module.exports = NodeHelper.create({
       if (topic === this.setTopic) {
         try {
           const payload = JSON.parse(message.toString());
-          console.log(`[MMM-HomeAssistant] Received message on topic ${topic}:`, payload);
+          Log.debug(`[MMM-HomeAssistant] Received message on topic ${topic}:`, payload);
 
           if ((this.config.brightnessControl || this.config.monitorControl) &&
             payload.state !== undefined && payload.state !== this.monitorValue) {
@@ -145,28 +158,38 @@ module.exports = NodeHelper.create({
                 }
               });
             } else {
-              console.error('[MMM-HomeAssistant] this.modules is not an array:', this.modules);
+              Log.error('[MMM-HomeAssistant] this.modules is not an array:', this.modules);
             }
           }
         } catch (err) {
-          console.error('[MMM-HomeAssistant] Failed to parse JSON payload:', err);
+          Log.error('[MMM-HomeAssistant] Failed to parse JSON payload:', err);
         }
       }
 
       if (topic === `${this.setTopic}/restart`) {
-        console.log('[MMM-HomeAssistant] Restart command received.');
+        Log.info('[MMM-HomeAssistant] Restart command received');
         this.handleRestart();
       }
 
       if (topic === `${this.setTopic}/refresh`) {
-        console.log('[MMM-HomeAssistant] Refresh command received.');
+        Log.info('[MMM-HomeAssistant] Refresh command received');
         this.handleRefresh();
+      }
+
+      // Handle custom commands
+      if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
+        this.config.customCommands.forEach((cmd) => {
+          if (topic === `${this.setTopic}/${cmd.name}`) {
+            Log.info(`[MMM-HomeAssistant] Custom command received: ${cmd.name}`);
+            this.handleCustomCommand(cmd);
+          }
+        });
       }
     });
   },
 
   handleMonitorSet: async function (payload) {
-    console.log('[MMM-HomeAssistant] Handling monitor set:', payload);
+    Log.debug('[MMM-HomeAssistant] Handling monitor set:', payload);
 
     let command;
     if (payload === 'ON') {
@@ -174,18 +197,18 @@ module.exports = NodeHelper.create({
     } else if (payload === 'OFF') {
       command = this.config.monitorOffCommand;
     } else {
-      console.error('[MMM-HomeAssistant] Invalid monitor state payload:', payload);
+      Log.error('[MMM-HomeAssistant] Invalid monitor state payload:', payload);
       return;
     }
 
     if (!command) {
-      console.error('[MMM-HomeAssistant] Monitor command not configured for state:', payload);
+      Log.warn('[MMM-HomeAssistant] Monitor command not configured for state:', payload);
       return;
     }
 
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        console.error(`[MMM-HomeAssistant] Error executing monitor command:`, error);
+        Log.error('[MMM-HomeAssistant] Error executing monitor command:', error);
         return;
       }
       this.monitorValue = payload;
@@ -194,39 +217,47 @@ module.exports = NodeHelper.create({
   },
 
   handleBrightnessSet: async function (payload) {
-    console.log('[MMM-HomeAssistant] Handling brightness set:', payload);
+    Log.debug('[MMM-HomeAssistant] Handling brightness set:', payload);
     this.sendSocketNotification("BRIGHTNESS_CONTROL", payload);
   },
 
   handleModuleSet: async function (moduleName, payload) {
-    console.log(`[MMM-HomeAssistant] Handling module set for ${moduleName}:`, payload);
+    Log.debug(`[MMM-HomeAssistant] Handling module set for ${moduleName}`);
     const module = this.modules.find(m => m.urlPath === moduleName);
+    if (!module) {
+      Log.warn('[MMM-HomeAssistant] Module not found for urlPath:', moduleName);
+      return;
+    }
     const command = payload[moduleName];
+    if (!command) {
+      Log.debug('[MMM-HomeAssistant] No command provided for module:', moduleName);
+      return;
+    }
     const identifier = module.identifier;
     this.sendSocketNotification("MODULE_CONTROL", { identifier, command });
 
   },
 
   handleRestart: function () {
-    console.log('[MMM-HomeAssistant] Handling PM2 restart action');
+    Log.info('[MMM-HomeAssistant] Restarting via PM2');
     let pm2;
     try {
       pm2 = require('pm2');
     } catch (err) {
-      console.log('[MMM-HomeAssistant] PM2 not installed or unlinked');
+      Log.debug('[MMM-HomeAssistant] PM2 not installed or unlinked');
       return;
     }
     pm2.connect((err) => {
       if (err) {
-        console.error('[MMM-HomeAssistant] PM2 connect error:', err);
+        Log.error('[MMM-HomeAssistant] PM2 connect error:', err);
         return;
       }
-      console.log(`[MMM-HomeAssistant] Restarting PM2 process: ${this.config.pm2ProcessName}`);
+      Log.debug(`[MMM-HomeAssistant] Restarting PM2 process: ${this.config.pm2ProcessName}`);
       pm2.restart(this.config.pm2ProcessName, (err) => {
         if (err) {
-          console.error('[MMM-HomeAssistant] PM2 restart error:', err);
+          Log.error('[MMM-HomeAssistant] PM2 restart error:', err);
         } else {
-          console.log(`[MMM-HomeAssistant] PM2 process ${this.config.pm2ProcessName} restarted successfully.`);
+          Log.info(`[MMM-HomeAssistant] Restarted PM2 process: ${this.config.pm2ProcessName}`);
         }
         pm2.disconnect();
       });
@@ -244,13 +275,31 @@ module.exports = NodeHelper.create({
       });
       const page = await browser.newPage();
       await page.goto(url, { waitUntil: 'networkidle0' });
-      await browser.close();
-      console.log(`[MMM-HomeAssistant] Opened and closed ${url}`);
+      Log.info(`[MMM-HomeAssistant] Browser refresh completed`);
     } catch (err) {
-      console.error(`[MMM-HomeAssistant] Error refreshing browser:`, err);
+      Log.error('[MMM-HomeAssistant] Error refreshing browser:', err);
     } finally {
       if (browser) await browser.close();
     }
+  },
+
+  handleCustomCommand: function (commandConfig) {
+    if (!commandConfig.command) {
+      Log.warn('[MMM-HomeAssistant] Custom command missing command property:', commandConfig.name);
+      return;
+    }
+
+    Log.debug(`[MMM-HomeAssistant] Executing custom command: ${commandConfig.name}`);
+    exec(commandConfig.command, (error, stdout, stderr) => {
+      if (error) {
+        Log.error(`[MMM-HomeAssistant] Error executing custom command '${commandConfig.name}':`, error);
+        return;
+      }
+      Log.debug(`[MMM-HomeAssistant] Custom command '${commandConfig.name}' executed successfully`);
+      if (stdout) {
+        Log.debug(`[MMM-HomeAssistant] Command output: ${stdout}`);
+      }
+    });
   },
 
   publishConfigs: async function () {
@@ -365,14 +414,36 @@ module.exports = NodeHelper.create({
         payloads.push(JSON.stringify(combinedJson));
       }
 
+      if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
+        this.config.customCommands.forEach((cmd) => {
+          if (cmd.name && cmd.command) {
+            const customButtonJson = {
+              availability_topic: this.availabilityTopic,
+              command_topic: `${this.setTopic}/${cmd.name}`,
+              payload_press: "execute",
+              entity_category: "config",
+              name: cmd.displayName || cmd.name.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()),
+              object_id: `${deviceId}_${cmd.name}`,
+              unique_id: `${deviceId}_${cmd.name}`,
+            };
+
+            const customConfigTopic = `${this.config.autodiscoveryTopic}/button/${deviceId}/${cmd.name}/config`;
+            const combinedJson = { ...deviceJson, ...customButtonJson };
+
+            topics.push(customConfigTopic);
+            payloads.push(JSON.stringify(combinedJson));
+          }
+        });
+      }
+
       topics.forEach((topic, index) => {
         const payload = payloads[index];
         this.client.publish(topic, payload, { retain: true });
-        console.log('[MMM-HomeAssistant] Published config to:', topic);
+        Log.debug('[MMM-HomeAssistant] Published config to:', topic);
       });
 
     } catch (err) {
-      console.error('[MMM-HomeAssistant] Failed to publish light configuration:', err);
+      Log.error('[MMM-HomeAssistant] Failed to publish configs:', err);
     }
   },
 
@@ -392,7 +463,7 @@ module.exports = NodeHelper.create({
     }
 
     if (Object.keys(payload).length > 0) {
-      console.log('[MMM-HomeAssistant] Updated state:', payload);
+      Log.debug('[MMM-HomeAssistant] Updated state:', payload);
       this.client.publish(this.stateTopic, JSON.stringify(payload), { retain: true });
     }
   },
@@ -403,7 +474,7 @@ module.exports = NodeHelper.create({
       const pollMonitorStatus = () => {
         exec(this.config.monitorStatusCommand, (error, stdout, stderr) => {
           if (error) {
-            console.error(`[MMM-HomeAssistant] Error executing monitorStatusCommand:`, error);
+            Log.error('[MMM-HomeAssistant] Error executing monitorStatusCommand:', error);
             return;
           }
           const trimmed = stdout.trim().toLowerCase();
@@ -439,7 +510,7 @@ module.exports = NodeHelper.create({
       const wasEmpty = !Array.isArray(this.modules) || this.modules.length === 0;
       this.modules = payload;
       if (wasEmpty) {
-        console.log('[MMM-HomeAssistant] Received modules data:', this.modules);
+        Log.debug('[MMM-HomeAssistant] Received module list from frontend');
       }
       else {
         this.publishStates();

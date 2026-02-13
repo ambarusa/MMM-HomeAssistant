@@ -102,3 +102,6 @@ dist
 
 # TernJS port file
 .tern-port
+# Custom commands logs and state files
+custom_commands/update_MM.log*
+custom_commands/update_MM.count
