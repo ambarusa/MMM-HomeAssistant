@@ -185,9 +185,23 @@ update_base() {
   
   cd "$mm_dir" || exit 1
   
-  # Reset to avoid conflicts
-  if ! git reset --hard HEAD >/dev/null 2>&1; then
-    log_warn "Failed to reset git state, attempting to continue"
+  # Fetch latest changes without pulling
+  if ! git fetch 2>&1 > /dev/null; then
+    log_error "Failed to fetch updates from git"
+    return 1
+  fi
+  
+  # Check if there are remote changes
+  local git_status
+  git_status=$(git status -uno 2>&1)
+  
+  if echo "$git_status" | grep -q "Your branch is behind"; then
+    log_info "Remote changes detected, resetting local state"
+    if ! git reset --hard HEAD >/dev/null 2>&1; then
+      log_warn "Failed to reset git state, attempting to continue"
+    fi
+  else
+    log_info "No remote changes detected, skipping reset"
   fi
   
   # Pull latest changes
@@ -233,9 +247,24 @@ update_module() {
   
   cd "$module_path" || return 1
   
-  # Reset to clean state
-  if ! git reset --hard HEAD >/dev/null 2>&1; then
-    log_warn "$module_name: Failed to reset git state"
+  # Fetch latest changes without pulling
+  if ! git fetch 2>&1 > /dev/null; then
+    log_error "Failed to fetch $module_name"
+    ((MODULES_FAILED++))
+    return 1
+  fi
+  
+  # Check if there are remote changes
+  local git_status
+  git_status=$(git status -uno 2>&1)
+  
+  if echo "$git_status" | grep -q "Your branch is behind"; then
+    log_info "$module_name: Remote changes detected, resetting local state"
+    if ! git reset --hard HEAD >/dev/null 2>&1; then
+      log_warn "$module_name: Failed to reset git state"
+    fi
+  else
+    log_info "$module_name: No remote changes detected, skipping reset"
   fi
   
   # Pull latest changes

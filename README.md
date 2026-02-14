@@ -68,7 +68,7 @@ To use this module, add it to the modules array in the `config/config.js` file:
             {
                 name: 'update_mm',
                 displayName: 'Update MagicMirror',
-                command: 'bash /path/to/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh' // Adjust this path to your MagicMirror installation
+                command: 'bash ~/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh'
             }
         ]
     }
@@ -135,7 +135,7 @@ Add a `customCommands` array to your config:
 customCommands: [
   {
     name: 'Update MagicMirror',
-    command: 'bash /home/magicmirror/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh'
+    command: 'bash ~/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh'
   },
   {
     name: 'Say Hello',
@@ -149,7 +149,7 @@ customCommands: [
 | Property      | Type   | Required | Description                                                          |
 |---------------|--------|----------|----------------------------------------------------------------------|
 | `name`        | string | Yes      | Display name for the command in Home Assistant. Internal name will be automatically converted to lowercase with underscores. |
-| `command`     | string | Yes      | Bash command or script path to execute. **Note:** Use absolute paths (e.g., `/home/user/path`) instead of `~` (tilde), as tilde expansion does not work in Node.js child processes. |
+| `command`     | string | Yes      | Bash command or script path to execute.     |
 
 ## Troubleshooting
 
