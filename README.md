@@ -66,8 +66,7 @@ To use this module, add it to the modules array in the `config/config.js` file:
         refreshBrowser: true,
         customCommands: [
             {
-                name: 'update_mm',
-                displayName: 'Update MagicMirror',
+                name: 'Update MagicMirror',
                 command: 'bash ~/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh'
             }
         ]
