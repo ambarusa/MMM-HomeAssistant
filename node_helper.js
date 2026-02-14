@@ -122,7 +122,8 @@ module.exports = NodeHelper.create({
     if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
       this.config.customCommands.forEach((cmd) => {
         if (cmd.name) {
-          topics.push(`${this.setTopic}/${cmd.name}`);
+          const internalName = cmd.name.toLowerCase().replace(/\s+/g, '_');
+          topics.push(`${this.setTopic}/${internalName}`);
         }
       });
     }
@@ -179,7 +180,8 @@ module.exports = NodeHelper.create({
       // Handle custom commands
       if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
         this.config.customCommands.forEach((cmd) => {
-          if (topic === `${this.setTopic}/${cmd.name}`) {
+          const internalName = cmd.name.toLowerCase().replace(/\s+/g, '_');
+          if (topic === `${this.setTopic}/${internalName}`) {
             Log.info(`[MMM-HomeAssistant] Custom command received: ${cmd.name}`);
             this.handleCustomCommand(cmd);
           }
@@ -417,17 +419,18 @@ module.exports = NodeHelper.create({
       if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
         this.config.customCommands.forEach((cmd) => {
           if (cmd.name && cmd.command) {
+            const internalName = cmd.name.toLowerCase().replace(/\s+/g, '_');
             const customButtonJson = {
               availability_topic: this.availabilityTopic,
-              command_topic: `${this.setTopic}/${cmd.name}`,
+              command_topic: `${this.setTopic}/${internalName}`,
               payload_press: "execute",
-              entity_category: "config",
-              name: cmd.displayName || cmd.name.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()),
-              object_id: `${deviceId}_${cmd.name}`,
-              unique_id: `${deviceId}_${cmd.name}`,
+              entity_category: "diagnostic",
+              name: cmd.name,
+              object_id: `${deviceId}_${internalName}`,
+              unique_id: `${deviceId}_${internalName}`,
             };
 
-            const customConfigTopic = `${this.config.autodiscoveryTopic}/button/${deviceId}/${cmd.name}/config`;
+            const customConfigTopic = `${this.config.autodiscoveryTopic}/button/${deviceId}/${internalName}/config`;
             const combinedJson = { ...deviceJson, ...customButtonJson };
 
             topics.push(customConfigTopic);

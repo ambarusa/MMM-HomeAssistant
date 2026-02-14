@@ -134,13 +134,11 @@ Add a `customCommands` array to your config:
 ```js
 customCommands: [
   {
-    name: 'update_mm',
-    displayName: 'Update MagicMirror',
-    command: 'bash /home/pi/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh'
+    name: 'Update MagicMirror',
+    command: 'bash /home/magicmirror/MagicMirror/modules/MMM-HomeAssistant/custom_commands/update_MM.sh'
   },
   {
-    name: 'hello',
-    displayName: 'Say Hello',
+    name: 'Say Hello',
     command: 'echo "Hello from MagicMirror!"'
   }
 ]
@@ -150,9 +148,8 @@ customCommands: [
 
 | Property      | Type   | Required | Description                                                          |
 |---------------|--------|----------|----------------------------------------------------------------------|
-| `name`        | string | Yes      | Unique identifier for the command (used in MQTT topic).              |
-| `displayName` | string | No       | Display name in Home Assistant. Defaults to formatted `name`.        |
-| `command`     | string | Yes      | Bash command or script path to execute.                              |
+| `name`        | string | Yes      | Display name for the command in Home Assistant. Internal name will be automatically converted to lowercase with underscores. |
+| `command`     | string | Yes      | Bash command or script path to execute. **Note:** Use absolute paths (e.g., `/home/user/path`) instead of `~` (tilde), as tilde expansion does not work in Node.js child processes. |
 
 ## Troubleshooting
 
