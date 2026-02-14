@@ -27,16 +27,19 @@ Module.register("MMM-HomeAssistant", {
   },
 
   sendModules() {
+    const getBaseName = (module) => module.name.replace(/MMM-/g, "").replace(/-/g, "");
+    const getUrlPath = (name) => name.toLowerCase().replace(/\s+/g, "_");
+
     // Handling multiple instances of the same module
     const baseNameCounts = {};
     this.modules.enumerate((module) => {
-      const baseName = module.name.replace(/MMM-/g, "").replace(/-/g, "");
+      const baseName = getBaseName(module);
       baseNameCounts[baseName] = (baseNameCounts[baseName] || 0) + 1;
     });
     const nameInstance = {};
     const currentModuleData = [];
     this.modules.enumerate((module) => {
-      const baseName = module.name.replace(/MMM-/g, "").replace(/-/g, "");
+      const baseName = getBaseName(module);
       nameInstance[baseName] = (nameInstance[baseName] || 0) + 1;
       let name = baseName;
       if (baseNameCounts[baseName] > 1) {
@@ -46,7 +49,7 @@ Module.register("MMM-HomeAssistant", {
       entry.identifier = module.identifier;
       entry.hidden = module.hidden;
       entry.name = name;
-      entry.urlPath = name.toLowerCase().replace(/\s+/g, "_");
+      entry.urlPath = getUrlPath(name);
       currentModuleData.push(entry);
     });
     this.sendSocketNotification("MODULES_UPDATE", currentModuleData);
@@ -85,14 +88,12 @@ Module.register("MMM-HomeAssistant", {
 
     // Send initial brightness value
     this.sendSocketNotification("BRIGHTNESS_UPDATE", lastBrightness);
-    Log.info(`[MMM-HomeAssistant] Brightness changed to: ${lastBrightness}`);
 
     divs.forEach((overlay) => {
       const observer = new MutationObserver(() => {
         const newBrightness = getBrightness(getDivs());
         if (newBrightness !== lastBrightness) {
           this.sendSocketNotification("BRIGHTNESS_UPDATE", newBrightness);
-          Log.info(`[MMM-HomeAssistant] Brightness changed to: ${newBrightness}`);
           lastBrightness = newBrightness;
         }
       });
@@ -108,7 +109,6 @@ Module.register("MMM-HomeAssistant", {
       const observer = new MutationObserver(() => {
         if (module.hidden !== lastHidden) {
           lastHidden = module.hidden;
-          Log.info(`[MMM-HomeAssistant] Module '${module.identifier}' hidden state changed to: ${lastHidden}`);
           this.sendModules();
         }
       });
@@ -120,15 +120,18 @@ Module.register("MMM-HomeAssistant", {
     if (notification === "MODULE_CONTROL") {
       Log.info(`[MMM-HomeAssistant] Module control received: ${payload.identifier} ${payload.command}`);
       const module = this.modules.find(m => m.identifier === payload.identifier);
-      if (payload.command === 'ON')
+      if (!module) {
+        Log.warn(`[MMM-HomeAssistant] Module not found: ${payload.identifier}`);
+        return;
+      }
+      if (payload.command === 'ON') {
         module.show(1000, function () { }, { lockString: payload.moduleName });
-      else if (payload.command === 'OFF')
-        module.hide(1000, function () { }, { lockString: payload.moduleName })
+      } else if (payload.command === 'OFF') {
+        module.hide(1000, function () { }, { lockString: payload.moduleName });
+      }
     }
 
     if (notification === "BRIGHTNESS_CONTROL") {
-      Log.info(`[MMM-HomeAssistant] Brightness control received: ${payload}`);
-      const childNodesList = document.body.childNodes;
       for (let i = 0; i < childNodesList.length; i++) {
         if (childNodesList[i].nodeName !== "SCRIPT" && childNodesList[i].nodeName !== "#text") {
             childNodesList[i].style.filter = `brightness(${payload}%)`;
