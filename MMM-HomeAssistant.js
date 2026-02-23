@@ -132,6 +132,7 @@ Module.register("MMM-HomeAssistant", {
     }
 
     if (notification === "BRIGHTNESS_CONTROL") {
+      const childNodesList = document.body.childNodes;
       for (let i = 0; i < childNodesList.length; i++) {
         if (childNodesList[i].nodeName !== "SCRIPT" && childNodesList[i].nodeName !== "#text") {
             childNodesList[i].style.filter = `brightness(${payload}%)`;
