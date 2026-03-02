@@ -336,6 +336,7 @@ module.exports = NodeHelper.create({
 
       // Light entity is added if monitorControl or brightnessControl is enabled
       if (this.config.monitorControl || this.config.brightnessControl) {
+        const hasBrightness = !!this.config.brightnessControl;
         const lightJson = {
           availability_topic: this.availabilityTopic,
           state_topic: this.stateTopic,
@@ -344,6 +345,7 @@ module.exports = NodeHelper.create({
           brightness_scale: 100,
           schema: "json",
           value_template: "{{ value_json.state }}",
+          supported_color_modes: [hasBrightness ? "brightness" : "onoff"],
           name: null,
           default_entity_id: `light.${deviceId}_light`,
           unique_id: `${deviceId}_light`,
