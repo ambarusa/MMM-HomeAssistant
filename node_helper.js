@@ -345,7 +345,7 @@ module.exports = NodeHelper.create({
           schema: "json",
           value_template: "{{ value_json.state }}",
           name: null,
-          object_id: `${deviceId}_light`,
+          default_entity_id: `light.${deviceId}_light`,
           unique_id: `${deviceId}_light`,
         };
 
@@ -368,7 +368,7 @@ module.exports = NodeHelper.create({
             value_template: `{{ value_json.${element.urlPath} }}`,
             command_template: `{"${element.urlPath}": "{{ value }}" }`,
             name: element.name.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()),
-            object_id: `${deviceId}_${element.urlPath}_switch`,
+            default_entity_id: `switch.${deviceId}_${element.urlPath}_switch`,
             unique_id: `${deviceId}_${element.urlPath}_switch`,
           }
           topics.push(`${this.config.autodiscoveryTopic}/switch/${deviceId}/${element.urlPath}/config`);
@@ -384,7 +384,7 @@ module.exports = NodeHelper.create({
           payload_press: "identify",
           entity_category: "diagnostic",
           name: 'Restart',
-          object_id: `${deviceId}_restart`,
+          default_entity_id: `button.${deviceId}_restart`,
           unique_id: `${deviceId}_restart`,
         };
 
@@ -404,7 +404,7 @@ module.exports = NodeHelper.create({
           payload_press: "identify",
           entity_category: "diagnostic",
           name: 'Refresh Browser',
-          object_id: `${deviceId}_refresh_browser`,
+          default_entity_id: `button.${deviceId}_refresh_browser`,
           unique_id: `${deviceId}_refresh_browser`,
         };
 
@@ -426,7 +426,7 @@ module.exports = NodeHelper.create({
               payload_press: "execute",
               entity_category: "diagnostic",
               name: cmd.name,
-              object_id: `${deviceId}_${internalName}`,
+              default_entity_id: `button.${deviceId}_${internalName}`,
               unique_id: `${deviceId}_${internalName}`,
             };
 
