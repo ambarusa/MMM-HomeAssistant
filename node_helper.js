@@ -299,7 +299,7 @@ module.exports = NodeHelper.create({
 		try {
 			pm2 = require("pm2");
 		} catch (err) {
-			Log.debug("PM2 not installed or unlinked", {
+			Log.error("PM2 not installed or unlinked", {
 				processName: this.config.pm2ProcessName,
 				error: err
 			});
