@@ -50,6 +50,16 @@ module.exports = NodeHelper.create({
 		return serverUrl;
 	},
 
+	canPublish () {
+		return !!(this.client && this.client.connected && !this.client.disconnecting);
+	},
+
+	publishIfConnected (topic, payload, options) {
+		if (!this.canPublish()) return false;
+		this.client.publish(topic, payload, options);
+		return true;
+	},
+
 	connectMQTT () {
 		if (this.client) return;
 
@@ -81,9 +91,13 @@ module.exports = NodeHelper.create({
 			clientId: mqttOptions.clientId,
 			availabilityTopic: this.availabilityTopic
 		});
-		this.client = mqtt.connect(mqttServer, mqttOptions);
+		const client = mqtt.connect(mqttServer, mqttOptions);
+		this.client = client;
+		this.mqttMessageHandler = this.handleMqttMessage.bind(this);
+		client.on("message", this.mqttMessageHandler);
 
-		this.client.on("connect", () => {
+		client.on("connect", () => {
+			if (client !== this.client) return;
 			Log.info("Connected to MQTT", {
 				stateTopic: this.stateTopic,
 				setTopic: this.setTopic,
@@ -96,17 +110,18 @@ module.exports = NodeHelper.create({
 			this.publishConfigs();
 
 			// Publish birth message to availability topic
-			this.client.publish(this.availabilityTopic, "online", { retain: true });
-			Log.debug("Published availability birth message", {
-				topic: this.availabilityTopic,
-				payload: "online"
-			});
+			if (this.publishIfConnected(this.availabilityTopic, "online", { retain: true })) {
+				Log.debug("Published availability birth message", {
+					topic: this.availabilityTopic,
+					payload: "online"
+				});
+			}
 
 			// Subscribe to /set topics
 			this.subscribeToSetTopics();
 		});
 
-		this.client.on("error", (err) => {
+		client.on("error", (err) => {
 			if (!this.mqttErrorLogged) {
 				Log.error("MQTT connection error", {
 					server: `${mqttServer}:${mqttOptions.port}`,
@@ -116,18 +131,12 @@ module.exports = NodeHelper.create({
 			}
 		});
 
-		this.client.on("close", () => {
+		client.on("close", () => {
 			if (!this.mqttCloseLogged) {
 				Log.debug("MQTT connection closed", {
 					availabilityTopic: this.availabilityTopic
 				});
 				this.mqttCloseLogged = true; // Set close flag to prevent repeated logging
-				// Publish last will message to availability topic
-				this.client.publish(this.availabilityTopic, "offline", { retain: true });
-				Log.debug("Published availability offline message", {
-					topic: this.availabilityTopic,
-					payload: "offline"
-				});
 			}
 		});
 	},
@@ -160,67 +169,68 @@ module.exports = NodeHelper.create({
 			}
 		});
 
-		this.client.on("message", async (topic, message) => {
-			if (topic === this.setTopic) {
-				try {
-					const rawMessage = message.toString();
-					const payload = JSON.parse(rawMessage);
-					Log.debug("Received MQTT state command", { topic, payload });
+	},
 
-					if ((this.config.brightnessControl || this.config.monitorControl)
-					  && payload.state !== undefined && payload.state !== this.monitorValue) {
-						await this.handleMonitorSet(payload.state);
-					}
+	async handleMqttMessage (topic, message) {
+		if (topic === this.setTopic) {
+			try {
+				const rawMessage = message.toString();
+				const payload = JSON.parse(rawMessage);
+				Log.debug("Received MQTT state command", { topic, payload });
 
-					if (this.config.brightnessControl
-					  && payload.brightness !== undefined && payload.state !== this.brightnessValue) {
-						await this.handleBrightnessSet(payload.brightness);
-					}
-
-					if (this.config.moduleControl) {
-						if (Array.isArray(this.modules)) {
-							this.modules.forEach((element) => {
-								if (payload.hasOwnProperty(element.urlPath)) {
-									this.handleModuleSet(element.urlPath, payload);
-								}
-							});
-						} else {
-							Log.error("this.modules is not an array:", this.modules);
-						}
-					}
-				} catch (err) {
-					Log.error("Failed to parse JSON payload", {
-						topic,
-						rawPayload: message.toString(),
-						error: err
-					});
+				if ((this.config.brightnessControl || this.config.monitorControl)
+				  && payload.state !== undefined && payload.state !== this.monitorValue) {
+					await this.handleMonitorSet(payload.state);
 				}
-			}
 
-			if (topic === `${this.setTopic}/restart`) {
-				Log.info("Restart command received", { topic });
-				this.handleRestart();
-			}
+				if (this.config.brightnessControl
+				  && payload.brightness !== undefined && payload.state !== this.brightnessValue) {
+					await this.handleBrightnessSet(payload.brightness);
+				}
 
-			if (topic === `${this.setTopic}/refresh`) {
-				Log.info("Refresh command received", { topic });
-				this.handleRefresh();
-			}
-
-			// Handle custom commands
-			if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
-				this.config.customCommands.forEach((cmd) => {
-					const internalName = cmd.name.toLowerCase().replace(/\s+/g, "_");
-					if (topic === `${this.setTopic}/${internalName}`) {
-						Log.info("Custom command received", {
-							topic,
-							name: cmd.name
+				if (this.config.moduleControl) {
+					if (Array.isArray(this.modules)) {
+						this.modules.forEach((element) => {
+							if (payload.hasOwnProperty(element.urlPath)) {
+								this.handleModuleSet(element.urlPath, payload);
+							}
 						});
-						this.handleCustomCommand(cmd);
+					} else {
+						Log.error("this.modules is not an array:", this.modules);
 					}
+				}
+			} catch (err) {
+				Log.error("Failed to parse JSON payload", {
+					topic,
+					rawPayload: message.toString(),
+					error: err
 				});
 			}
-		});
+		}
+
+		if (topic === `${this.setTopic}/restart`) {
+			Log.info("Restart command received", { topic });
+			this.handleRestart();
+		}
+
+		if (topic === `${this.setTopic}/refresh`) {
+			Log.info("Refresh command received", { topic });
+			this.handleRefresh();
+		}
+
+		// Handle custom commands
+		if (this.config.customCommands && Array.isArray(this.config.customCommands)) {
+			this.config.customCommands.forEach((cmd) => {
+				const internalName = cmd.name.toLowerCase().replace(/\s+/g, "_");
+				if (topic === `${this.setTopic}/${internalName}`) {
+					Log.info("Custom command received", {
+						topic,
+						name: cmd.name
+					});
+					this.handleCustomCommand(cmd);
+				}
+			});
+		}
 	},
 
 	handleMonitorSet (payload) {
@@ -532,11 +542,12 @@ module.exports = NodeHelper.create({
 
 			topics.forEach((topic, index) => {
 				const payload = payloads[index];
-				this.client.publish(topic, payload, { retain: true });
-				Log.debug("Published MQTT autodiscovery config", {
-					topic,
-					payload
-				});
+				if (this.publishIfConnected(topic, payload, { retain: true })) {
+					Log.debug("Published MQTT autodiscovery config", {
+						topic,
+						payload
+					});
+				}
 			});
 
 		} catch (err) {
@@ -564,7 +575,7 @@ module.exports = NodeHelper.create({
 				topic: this.stateTopic,
 				payload
 			});
-			this.client.publish(this.stateTopic, JSON.stringify(payload), { retain: true });
+			this.publishIfConnected(this.stateTopic, JSON.stringify(payload), { retain: true });
 		}
 	},
 
