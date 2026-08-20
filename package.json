@@ -6,7 +6,7 @@
   "scripts": {
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "npm run lint"
+    "test": "node --test test/*.test.js && npm run lint"
   },
   "repository": {
     "type": "git",
